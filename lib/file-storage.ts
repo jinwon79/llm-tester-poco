@@ -112,7 +112,7 @@ ${a.analysis}
         if (gptPerformance.length > 0) {
             fs.writeFileSync(path.join(folderPath, `performance_gpt.json`), JSON.stringify(gptPerformance, null, 2));
 
-            const content = `# 성능 평가 리포트 - GPT-4.1
+            const content = `# 성능 평가 리포트 - GPT-5
 
 ${gptPerformance.map(p => `## 대상 모델: ${p.test_metadata.model}
 - **평균 점수**: ${p.final_summary.avg_score.toFixed(2)}
@@ -164,7 +164,7 @@ ${p.results.map(r => `#### Trial ${r.id} (총점: ${r.total_score})
         if (gptComp.length > 0) {
             fs.writeFileSync(path.join(folderPath, `comparative_gpt.json`), JSON.stringify(gptComp, null, 2));
 
-            const content = `# A/B 비교 평가 리포트 - GPT-4.1
+            const content = `# A/B 비교 평가 리포트 - GPT-5
 
 ${gptComp.map(c => `## 대상 모델: ${c.targetModel}
 - **최종 우승**: **${c.winner}**

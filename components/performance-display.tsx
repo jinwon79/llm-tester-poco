@@ -53,7 +53,7 @@ export default function PerformanceDisplay({ performanceResults }: PerformanceDi
         'gemini-3-pro-preview',
         'gemini-3-flash-preview',
         'Claude 4.5 Sonnet',
-        'GPT-4.1'
+        'GPT-5'
     ];
 
     modelNames.sort((a, b) => {

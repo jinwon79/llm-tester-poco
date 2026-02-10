@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
                     ]);
 
                     if (gptJudge) {
-                        const result = { ...gptJudge, targetModel: modelName, judgeModel: 'GPT-4.1' };
+                        const result = { ...gptJudge, targetModel: modelName, judgeModel: 'GPT-5' };
                         comparativeResults.push(result);
                         sendUpdate('comparative_update', result);
                     }

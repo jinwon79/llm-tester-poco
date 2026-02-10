@@ -29,7 +29,7 @@ export default function AnalysisDisplay({ analysisResults }: AnalysisDisplayProp
                     LLM 모델 내부 일관성 분석
                 </h2>
                 <p className="text-gray-500 text-sm font-medium">
-                    GPT-4.1 및 Claude 4.5 Sonnet 판사가 답변의 일관성을 검증한 결과입니다.
+                    GPT-5 및 Claude 4.5 Sonnet 판사가 답변의 일관성을 검증한 결과입니다.
                 </p>
             </div>
 

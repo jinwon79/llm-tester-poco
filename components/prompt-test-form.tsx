@@ -28,7 +28,7 @@ export default function PromptTestForm({ onSubmit, isLoading }: PromptTestFormPr
         { id: 'gemini-3-pro-preview', label: 'Gemini 3.0 Pro Preview', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
         { id: 'gemini-flash', label: 'Gemini 3.0 Flash', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
         { id: 'claude', label: 'Claude 4.5 Sonnet', color: 'bg-orange-100 text-orange-700 border-orange-200' },
-        { id: 'gpt', label: 'GPT-4.1', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+        { id: 'gpt', label: 'GPT-5', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
     ];
 
     const handleSubmit = (e: React.FormEvent) => {

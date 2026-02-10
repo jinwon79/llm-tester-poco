@@ -119,9 +119,9 @@ async function runSingleTest(modelType: ModelProvider, repeatIndex: number, inpu
           { role: 'system', content: input.systemPrompt || '' },
           { role: 'user', content: input.userMessage },
         ],
-        model: 'gpt-4.1',
+        model: 'gpt-5-2025-08-07',
       });
-      result.model = 'GPT-4.1';
+      result.model = 'GPT-5';
       result.response = completion.choices[0].message.content || '';
       result.inputTokens = completion.usage?.prompt_tokens || 0;
       result.outputTokens = completion.usage?.completion_tokens || 0;
@@ -208,10 +208,10 @@ ${compareText}
       });
       responseText = msg.content[0].type === 'text' ? msg.content[0].text : '';
     } else {
-      judgeModelName = 'GPT-4.1';
+      judgeModelName = 'GPT-5';
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'gpt-4.1',
+        model: 'gpt-5-2025-08-07',
       });
       responseText = completion.choices[0].message.content || '';
     }
@@ -231,7 +231,7 @@ ${compareText}
   } catch (error) {
     return {
       targetModel,
-      judgeModel: judgeProvider === 'claude' ? 'Claude 4.5 Sonnet' : 'GPT-4.1',
+      judgeModel: judgeProvider === 'claude' ? 'Claude 4.5 Sonnet' : 'GPT-5',
       analysis: `평가 중 에러 발생: ${error instanceof Error ? error.message : 'Unknown error'}`,
       score: 0,
       verdict: 'Fail',
@@ -321,10 +321,10 @@ ${responsesText}
       });
       responseText = msg.content[0].type === 'text' ? msg.content[0].text : '';
     } else {
-      judgeModelName = 'GPT-4.1';
+      judgeModelName = 'GPT-5';
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'gpt-4.1',
+        model: 'gpt-5-2025-08-07',
         response_format: { type: 'json_object' }
       });
       responseText = completion.choices[0].message.content || '';
@@ -390,6 +390,7 @@ export async function evaluateComparativePerformance(
 
 1. **지시 이행 (Adherence) - 45점 [핵심]:** 
    - 해당 버전의 시스템 프롬프트에 명시된 페르소나, 말투, 출력 형식, 제약 사항을 얼마나 '완벽하게' 준수했는가? (사소한 위반도 엄격히 감점)
+   - **주의:** 시스템 프롬프트에서 명시적으로 출처나 인용 표기를 요구하지 않았다면, 이를 이유로 감점하지 마십시오. 답변의 내용이 사실에 부합하는지에 집중하십시오.
 2. **정확성 (Accuracy) - 20점:** 
    - 응답 내용이 사실에 근거하며 정보의 누락이 없는가?
 3. **논리성 및 구조 (Logic) - 20점:** 
@@ -439,10 +440,10 @@ ${responseB}
       });
       responseText = msg.content[0].type === 'text' ? msg.content[0].text : '';
     } else {
-      judgeModelName = 'GPT-4.1';
+      judgeModelName = 'GPT-5';
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'gpt-4.1',
+        model: 'gpt-5-2025-08-07',
         response_format: { type: 'json_object' }
       });
       responseText = completion.choices[0].message.content || '';
