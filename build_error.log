@@ -1,0 +1,17 @@
+
+> llm-tester-poc@0.1.0 build
+> next build
+
+unhandledRejection Error: Cannot find module '../../data/browsers'
+Require stack:
+- F:\llm-tester-poco\node_modules\caniuse-lite\dist\unpacker\browsers.js
+- F:\llm-tester-poco\node_modules\caniuse-lite\dist\unpacker\agents.js
+- F:\llm-tester-poco\node_modules\next\dist\compiled\browserslist\index.js
+- F:\llm-tester-poco\node_modules\next\dist\build\utils.js
+- F:\llm-tester-poco\node_modules\next\dist\build\entries.js
+- F:\llm-tester-poco\node_modules\next\dist\build\index.js
+- F:\llm-tester-poco\node_modules\next\dist\cli\next-build.js
+    at ignore-listed frames {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array]
+}

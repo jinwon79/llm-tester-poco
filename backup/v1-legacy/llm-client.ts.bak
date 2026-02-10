@@ -1,0 +1,428 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+
+export type ModelProvider = 'gemini-pro' | 'gemini-3-pro-preview' | 'gemini-flash' | 'claude' | 'gpt';
+
+export interface TestInput {
+  testTitle: string;
+  systemPromptVersion?: string;
+  systemPrompt?: string;
+  userMessage: string;
+  models: ModelProvider[];
+  repeatCount: number;
+}
+
+export interface ModelResult {
+  model: string;
+  repeatIndex: number;
+  response: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  latencyMs: number;
+  error?: string;
+}
+
+export interface AnalysisResult {
+  targetModel: string;
+  judgeModel: string;
+  analysis: string;
+  score: number;
+  verdict: 'Pass' | 'Fail';
+}
+
+export interface PerformanceResult {
+  test_metadata: { model: string; total_trials: number };
+  results: {
+    id: number;
+    breakdown: { accuracy: number; adherence: number; quality: number };
+    total_score: number;
+    reason: string;
+  }[];
+  final_summary: {
+    avg_score: number;
+    pass_count: number;
+    consistency_std_dev: string;
+  };
+  judgeModel: string;
+}
+
+// 클라이언트 초기화
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY!);
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+import pLimit from 'p-limit';
+
+// ... (인터페이스 생략 - 기존과 동일)
+
+// 개별 테스트 실행을 위한 헬퍼 함수
+async function runSingleTest(modelType: ModelProvider, repeatIndex: number, input: TestInput): Promise<ModelResult> {
+  const startTime = Date.now();
+  let result: ModelResult = {
+    model: modelType,
+    repeatIndex,
+    response: '',
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    latencyMs: 0,
+  };
+
+  try {
+    if (modelType.startsWith('gemini')) {
+      let modelName = '';
+      if (modelType === 'gemini-pro') modelName = 'gemini-2.5-pro';
+      if (modelType === 'gemini-3-pro-preview') modelName = 'gemini-3-pro-preview';
+      if (modelType === 'gemini-flash') modelName = 'gemini-3-flash-preview';
+
+      let model = genAI.getGenerativeModel({ model: modelName });
+      if (input.systemPrompt) {
+        model = genAI.getGenerativeModel({ model: modelName, systemInstruction: input.systemPrompt });
+      }
+
+      const resultGen = await model.generateContent(input.userMessage);
+      const response = await resultGen.response;
+      const text = response.text();
+      const usage = response.usageMetadata;
+
+      result.model = modelName;
+      result.response = text;
+      result.inputTokens = usage?.promptTokenCount || 0;
+      result.outputTokens = usage?.candidatesTokenCount || 0;
+      result.totalTokens = usage?.totalTokenCount || 0;
+
+    } else if (modelType === 'claude') {
+      const msg = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4096,
+        system: input.systemPrompt,
+        messages: [{ role: 'user', content: input.userMessage }],
+      });
+      result.model = 'Claude 4.5 Sonnet';
+      result.response = msg.content[0].type === 'text' ? msg.content[0].text : '';
+      result.inputTokens = msg.usage.input_tokens;
+      result.outputTokens = msg.usage.output_tokens;
+      result.totalTokens = msg.usage.input_tokens + msg.usage.output_tokens;
+
+    } else if (modelType === 'gpt') {
+      const completion = await openai.chat.completions.create({
+        messages: [
+          { role: 'system', content: input.systemPrompt || '' },
+          { role: 'user', content: input.userMessage },
+        ],
+        model: 'gpt-4.1',
+      });
+      result.model = 'GPT-4.1';
+      result.response = completion.choices[0].message.content || '';
+      result.inputTokens = completion.usage?.prompt_tokens || 0;
+      result.outputTokens = completion.usage?.completion_tokens || 0;
+      result.totalTokens = completion.usage?.total_tokens || 0;
+    }
+
+    result.latencyMs = Date.now() - startTime;
+    return result;
+  } catch (error) {
+    result.latencyMs = Date.now() - startTime;
+    result.error = error instanceof Error ? error.message : 'Unknown error';
+    return result;
+  }
+}
+
+export async function runTest(input: TestInput): Promise<ModelResult[]> {
+  // 동시 실행 수 제한 (API 계정 등급에 따라 조절 가능, 여기서는 5로 설정)
+  const limit = pLimit(5);
+  const tasks: Promise<ModelResult>[] = [];
+
+  for (const modelType of input.models) {
+    for (let i = 1; i <= input.repeatCount; i++) {
+      tasks.push(limit(() => runSingleTest(modelType, i, input)));
+    }
+  }
+
+  return await Promise.all(tasks);
+}
+
+export async function evaluateConsistency(
+  targetModel: string,
+  referenceResponse: string,
+  compareResponses: string[],
+  judgeProvider: 'gpt' | 'claude'
+): Promise<AnalysisResult> {
+  const compareText = compareResponses.map((r, i) => `[비교 답변 ${i + 2}]: ${r}`).join('\n\n');
+
+  const prompt = `### Role: 전문 품질 평가관
+### Task: 동일한 질문에 대한 LLM 답변들의 '의미적 일관성' 평가
+
+당신은 AI 서비스의 품질을 평가하는 10년 차 전문 언어 검수사입니다. 
+아래의 [기준 답변]과 여러 개의 [비교 답변]들을 대조하여 정보의 평탄도와 논리적 일관성을 판결하십시오.
+
+[기준 답변 (1회차)]: 
+${referenceResponse}
+
+${compareText}
+
+### 평가 가이드라인:
+1. 정보 완전성 (Information Integrity, 5점):
+   - 기준 답변의 핵심 정보가 빠짐없이 포함되었는가?
+   - 새로운 내용이 추가되었더라도 기준 답변의 본질을 흐리지 않는가?
+2. 형식 및 제약 준수 (Format & Constraint, 3점):
+   - 불렛 포인트, 표, JSON 등 요구된 형식이 동일하게 유지되었는가?
+   - 답변의 길이(분량)가 유사한 수준인가?
+3. 톤앤매너 및 논리 (Tone & Logic, 2점):
+   - 말투(종결어미, 전문성 등)가 일관적인가?
+   - 기준 답변과 논리적으로 충돌하는 내용(할루시네이션)이 없는가?
+
+### 점수 가이드라인:
+- 10점: 두 답변이 문장 구조만 약간 다를 뿐, 의미와 형식이 100% 일치함.
+- 8-9점: 핵심 정보는 모두 포함됨. 사소한 표현 차이나 부연 설명이 추가됨.
+- 6-7점: 주요 정보는 포함되었으나, 일부 세부 사항이 누락되거나 형식이 미세하게 틀어짐.
+- 4-5점: 핵심 정보 중 일부가 누락되었거나, 말투가 기준과 확연히 다름.
+- 1-3점: 정보가 왜곡되었거나, 기준 답변과 상충하는 내용이 포함됨. 전혀 다른 형식임.
+
+### 출력 형식 (반드시 아래 형식을 지키고 한국어로 작성할 것):
+분석: (답변들 사이의 공통점과 차이점, 일관성 수준을 150자 이내로 요약)
+점수: (1~10점 사이의 정수)
+판정: (모든 답변이 핵심적으로 일치하면 Pass, 아니면 Fail)
+`;
+
+  let responseText = '';
+  let judgeModelName = '';
+
+  try {
+    if (judgeProvider === 'claude') {
+      judgeModelName = 'Claude 4.5 Sonnet';
+      const msg = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      responseText = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    } else {
+      judgeModelName = 'GPT-4.1';
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'gpt-4.1',
+      });
+      responseText = completion.choices[0].message.content || '';
+    }
+
+    // 결과 파싱 (마크다운 별표나 공백에 유연하게 대응하도록 정규식 보강)
+    const scoreMatch = responseText.match(/점수[:\s*]*(\d+)/);
+    const verdictMatch = responseText.match(/판정[:\s*]*(Pass|Fail)/i);
+    const analysisMatch = responseText.match(/분석[:\s*]*([\s\S]*?)(?=\n?\s*\*?\*?점수:|$)/);
+
+    return {
+      targetModel,
+      judgeModel: judgeModelName,
+      analysis: analysisMatch ? analysisMatch[1].trim() : responseText.slice(0, 200),
+      score: scoreMatch ? parseInt(scoreMatch[1]) : 0,
+      verdict: (verdictMatch ? verdictMatch[1].toLowerCase() : 'fail') === 'pass' ? 'Pass' : 'Fail',
+    };
+  } catch (error) {
+    return {
+      targetModel,
+      judgeModel: judgeProvider === 'claude' ? 'Claude 4.5 Sonnet' : 'GPT-4.1',
+      analysis: `평가 중 에러 발생: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      score: 0,
+      verdict: 'Fail',
+    };
+  }
+}
+
+export async function evaluatePerformance(
+  targetModel: string,
+  allResponses: string[],
+  judgeProvider: 'gpt' | 'claude'
+): Promise<PerformanceResult | null> {
+  const responsesText = allResponses.map((r, i) => `${i + 1}. ${r}`).join('\n\n');
+
+  const prompt = `### Role: AI 시스템 성능 평가 전문가
+### Task: 제시된 ${allResponses.length}개의 모델 답변을 세부 루브릭에 따라 정밀 채점하고 점수를 추출하라.
+
+[대상 모델]: ${targetModel}
+
+[검토할 답변 리스트]:
+${responsesText}
+
+### 평가 루브릭 및 가중치:
+1. 정확성 (5점): 사실 관계 및 정보 포함 여부
+2. 지시 이행 (3점): 형식 및 제약 조건 준수
+3. 논리/품질 (2점): 가독성 및 톤앤매너
+
+### 출력 형식 (반드시 JSON만 출력, 코드 블록이나 설명 없이 { }로 시작해서 }로 끝낼 것):
+{
+  "test_metadata": { "model": "${targetModel}", "total_trials": ${allResponses.length} },
+  "results": [
+    {
+      "id": 1,
+      "breakdown": { "accuracy": 5, "adherence": 3, "quality": 2 },
+      "total_score": 10,
+      "reason": "..."
+    }
+  ],
+  "final_summary": {
+    "avg_score": 0.0,
+    "pass_count": 0,
+    "consistency_std_dev": "0.0" // 소수점 포함 숫자만 입력할 것 (설명 금지)
+  }
+}
+`;
+
+  let responseText = '';
+  let judgeModelName = '';
+
+  try {
+    if (judgeProvider === 'claude') {
+      judgeModelName = 'Claude 4.5 Sonnet';
+      const msg = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      responseText = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    } else {
+      judgeModelName = 'GPT-4.1';
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'gpt-4.1',
+        response_format: { type: 'json_object' }
+      });
+      responseText = completion.choices[0].message.content || '';
+    }
+
+    // JSON 추출 (코드 블록 등이 포함될 수 있으므로 정제)
+    const jsonStr = responseText.substring(
+      responseText.indexOf('{'),
+      responseText.lastIndexOf('}') + 1
+    );
+    const parsed = JSON.parse(jsonStr);
+
+    return {
+      ...parsed,
+      judgeModel: judgeModelName
+    };
+  } catch (error) {
+    console.error(`Performance evaluation error (${judgeProvider}):`, error);
+    return null;
+  }
+}
+
+export interface ComparativeResult {
+  winner: 'A' | 'B' | 'Tie';
+  winFactor: string;
+  scores: {
+    instruction: { A: number; B: number };
+    reasoning: { A: number; B: number };
+    domain: { A: number; B: number };
+    utility: { A: number; B: number };
+    total: { A: number; B: number };
+  };
+  analysis: {
+    A: { strengths: string[]; weaknesses: string[] };
+    B: { strengths: string[]; weaknesses: string[] };
+  };
+  suggestion: string;
+  judgeModel: string;
+}
+
+export async function evaluateComparativePerformance(
+  systemPromptA: string,
+  systemPromptB: string,
+  responseA: string,
+  responseB: string,
+  userQuery: string,
+  judgeProvider: 'gpt' | 'claude'
+): Promise<ComparativeResult | null> {
+  const prompt = `### Role: 전문 프롬프트 엔지니어 및 품질 심사관 (QA Auditor)
+
+당신은 서로 다른 시스템 프롬프트 설정값에 따른 AI 모델의 응답 품질을 객관적으로 비교 분석하는 전문가입니다. 아래 제공된 [평가 환경]을 바탕으로 두 모델 응답(Response A, B)을 엄격히 심사하십시오.
+
+---
+
+## 1. 평가 환경 (Context)
+* **목표(Goal):** 두 가지 다른 시스템 프롬프트(A/B)가 동일한 사용자 질문에 대해 얼마나 효과적으로 작동하는지 비교 검증
+* **시스템 프롬프트 A:** ${systemPromptA}
+* **시스템 프롬프트 B:** ${systemPromptB}
+* **사용자 입력 (User Query):** ${userQuery}
+* **핵심 요구사항 (Core Requirements):** 각 시스템 프롬프트가 지시한 페르소나와 제약조건을 얼마나 더 잘 이행했는지 중점 평가
+
+---
+
+## 2. 평가 척도 (Evaluation Rubrics)
+각 항목당 5점 만점으로 정량 평가하며, 반드시 '구체적 근거'를 제시하십시오.
+
+1. **지시 이행도 (Instruction Following):** 해당 버전의 시스템 프롬프트에 명시된 페르소나, 제약 사항, 출력 형식을 얼마나 완벽하게 준수했는가?
+2. **논리적 일관성 (Reasoning & Coherence):** 답변의 전개 과정이 논리적이며, 모순되는 내용이 없는가?
+3. **도메인 적합성 (Domain Appropriateness):** 해당 산업/상황에 맞는 적절한 용어, 톤앤매너, 전문 지식을 사용했는가?
+4. **효용성 및 구체성 (Utility & Specificity):** 사용자에게 실질적인 도움이 되는 구체적인 솔루션을 제공하는가? (모호한 답변은 감점)
+
+---
+
+## 3. 출력 형식 (JSON Only)
+반드시 아래 JSON 형식으로만 출력하십시오. 코드 블록이나 마크다운 없이 순수 JSON 문자열만 반환해야 합니다.
+
+{
+  "winner": "A" 또는 "B" 또는 "Tie",
+  "winFactor": "승리 요인 한 줄 요약",
+  "scores": {
+    "instruction": { "A": 0, "B": 0 },
+    "reasoning": { "A": 0, "B": 0 },
+    "domain": { "A": 0, "B": 0 },
+    "utility": { "A": 0, "B": 0 },
+    "total": { "A": 0, "B": 0 }
+  },
+  "analysis": {
+    "A": { "strengths": ["강점1", "강점2"], "weaknesses": ["약점1"] },
+    "B": { "strengths": ["강점1"], "weaknesses": ["약점1", "약점2"] }
+  },
+  "suggestion": "두 모델의 공통적인 문제점이나 시스템 프롬프트 개선 제안 (한 문장)"
+}
+
+---
+## [데이터 입력 섹션]
+- **Response A:**
+${responseA}
+
+- **Response B:**
+${responseB}
+`;
+
+  let responseText = '';
+  let judgeModelName = '';
+
+  try {
+    if (judgeProvider === 'claude') {
+      judgeModelName = 'Claude 4.5 Sonnet';
+      const msg = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      responseText = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    } else {
+      judgeModelName = 'GPT-4.1';
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'gpt-4.1',
+        response_format: { type: 'json_object' }
+      });
+      responseText = completion.choices[0].message.content || '';
+    }
+
+    const jsonStr = responseText.substring(
+      responseText.indexOf('{'),
+      responseText.lastIndexOf('}') + 1
+    );
+    const parsed = JSON.parse(jsonStr);
+
+    return {
+      ...parsed,
+      judgeModel: judgeModelName
+    };
+  } catch (error) {
+    console.error(`Comparative evaluation error (${judgeProvider}):`, error);
+    return null;
+  }
+}
