@@ -12,7 +12,8 @@ export default function ManualEvalPage() {
     // Form States
     const [testTitle, setTestTitle] = useState('');
     const [testQuestionId, setTestQuestionId] = useState('');
-    const [commonTestEnv, setCommonTestEnv] = useState('');
+    const [serviceType, setServiceType] = useState<string>('consulting_tech');
+    const [commonTestEnv, setCommonTestEnv] = useState('A는 회사 프로필 및 비즈니스 특성에 대한 RAG 데이터 입력');
     const [question, setQuestion] = useState('');
     const [responseA, setResponseA] = useState({ env: '', content: '' });
     const [responseB, setResponseB] = useState({ env: '', content: '' });
@@ -34,6 +35,7 @@ export default function ManualEvalPage() {
                 body: JSON.stringify({
                     testTitle,
                     testQuestionId,
+                    serviceType,
                     commonTestEnv,
                     question,
                     responseA,
@@ -108,19 +110,34 @@ export default function ManualEvalPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">테스트 질문 ID (선택)</label>
-                            <input
-                                type="text"
-                                value={testQuestionId}
-                                onChange={e => setTestQuestionId(e.target.value)}
-                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
-                                placeholder="예: Q-001"
-                            />
+                            <label className="text-sm font-bold text-slate-700">평가 대상 서비스 유형</label>
+                            <select
+                                value={serviceType}
+                                onChange={e => setServiceType(e.target.value)}
+                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-medium bg-white"
+                            >
+                                <option value="consulting_tech">1. 경영/기술 컨설팅 (분야별 전문가 진단)</option>
+                                <option value="expert_recommendation">2. 전문가/기업 추천 (적합성/근거)</option>
+                                <option value="venture_combination">3. 벤처 콤비네이션 (협업 구조/논리성)</option>
+                                <option value="work_support">4. 업무지원 AI (조직 컨텍스트 반영)</option>
+                                <option value="project_space">5. 프로젝트 스페이스 (일정/액션아이템)</option>
+                            </select>
                         </div>
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-700">공통 테스트 환경 (Common Env)</label>
+                        <label className="text-sm font-bold text-slate-700">테스트 질문 ID (선택)</label>
+                        <input
+                            type="text"
+                            value={testQuestionId}
+                            onChange={e => setTestQuestionId(e.target.value)}
+                            className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                            placeholder="예: Q-001"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-slate-700">공통 데이터 환경 (Common Env)</label>
                         <textarea
                             value={commonTestEnv}
                             onChange={e => setCommonTestEnv(e.target.value)}

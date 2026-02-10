@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { evaluateComparativePerformance, ComparativeResult, ModelResult } from '@/lib/llm-client';
+import { evaluateComparativePerformance, evaluateServiceSpecificPerformance, ComparativeResult, ModelResult } from '@/lib/llm-client';
 import { saveTestResult } from '@/lib/file-storage';
 import pLimit from 'p-limit';
 
@@ -62,16 +62,20 @@ export async function POST(request: NextRequest) {
 
                 analysisTasks.push(analysisLimit(async () => {
                     const [gptJudge, claudeJudge] = await Promise.all([
-                        evaluateComparativePerformance(
-                            systemPromptA, systemPromptB,
-                            responseA.content, responseB.content,
+                        evaluateServiceSpecificPerformance(
+                            body.serviceType || 'consulting_tech',
+                            commonTestEnv,
                             question,
+                            responseA.content,
+                            responseB.content,
                             'gpt'
                         ),
-                        evaluateComparativePerformance(
-                            systemPromptA, systemPromptB,
-                            responseA.content, responseB.content,
+                        evaluateServiceSpecificPerformance(
+                            body.serviceType || 'consulting_tech',
+                            commonTestEnv,
                             question,
+                            responseA.content,
+                            responseB.content,
                             'claude'
                         )
                     ]);

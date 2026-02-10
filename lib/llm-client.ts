@@ -363,6 +363,7 @@ export interface ComparativeResult {
   };
   suggestion: string;
   judgeModel: string;
+  targetModel?: string;
 }
 
 export async function evaluateComparativePerformance(
@@ -390,7 +391,7 @@ export async function evaluateComparativePerformance(
 
 1. **지시 이행 (Adherence) - 45점 [핵심]:** 
    - 해당 버전의 시스템 프롬프트에 명시된 페르소나, 말투, 출력 형식, 제약 사항을 얼마나 '완벽하게' 준수했는가? (사소한 위반도 엄격히 감점)
-   - **주의:** 시스템 프롬프트에서 명시적으로 출처나 인용 표기를 요구하지 않았다면, 이를 이유로 감점하지 마십시오. 답변의 내용이 사실에 부합하는지에 집중하십시오.
+   - **절대 주의:** 시스템 프롬프트나 사용자 질문에서 '출처 표기', '인용', 'Reference'를 **명시적으로 요구하지 않았다면**, 출처가 없다는 이유로 절대 감점하거나 부정적으로 언급하지 마십시오. 오직 답변의 **내용적 정확성**과 **지시 사항 준수 여부**만 평가하십시오.
 2. **정확성 (Accuracy) - 20점:** 
    - 응답 내용이 사실에 근거하며 정보의 누락이 없는가?
 3. **논리성 및 구조 (Logic) - 20점:** 
@@ -461,6 +462,206 @@ ${responseB}
     };
   } catch (error) {
     console.error(`Comparative evaluation error(${judgeProvider}): `, error);
+    return null;
+  }
+}
+
+export type ServiceType = 'consulting_tech' | 'expert_recommendation' | 'venture_combination' | 'work_support' | 'project_space';
+
+export async function evaluateServiceSpecificPerformance(
+  serviceType: string,
+  commonEnv: string,
+  userQuery: string,
+  responseA: string,
+  responseB: string,
+  judgeProvider: 'gpt' | 'claude'
+): Promise<ComparativeResult | null> {
+
+  let systemPromptRole = "";
+  let criteriaDescription = "";
+
+  switch (serviceType) {
+    case 'consulting_tech':
+      systemPromptRole = "해당 분야의 최고 권위자 (수석 컨설턴트)";
+      criteriaDescription = `
+      1. **진단 및 처방의 전문성 (Diagnosis & Prescription) - 40점 [감점 방식]**
+         - 핵심 문제 원인을 잘못 파악했거나 피상적임: 건당 -10점
+         - 해결책이 너무 일반적이며(Generic) 구체적인 실행 방안이 없음: 건당 -5점
+         - 해당 분야(법무/기술/재무 등)의 전문 용어나 프로세스가 부정확함: 건당 -5점
+
+      2. **실현 가능성 및 논리 (Feasibility & Logic) - 30점**
+         - 제안한 솔루션이 현실적으로 실행하기 어렵거나 논리적 비약이 있음: -10점
+         - 예상되는 리스크나 부작용에 대한 고려가 없음: -5점
+
+      3. **고객 상황 반영 (Contextual Fit) - 20점**
+         - [기업 프로필]에 명시된 기업 규모, 업종, 제약 사항을 무시함: 건당 -5점
+         - RAG 데이터(제공된 컨텍스트)를 활용하지 않고 엉뚱한 소리를 함 (할루시네이션): -10점
+
+      4. **가독성 및 포맷 (Format) - 10점**
+         - 전문적인 비즈니스 리포트 형식이 아님: -5점
+      `;
+      break;
+
+    case 'expert_recommendation':
+      systemPromptRole = "도메인 전문가 매칭 코디네이터";
+      criteriaDescription = `
+      1. **추천의 적합성 (Relevance) - 40점 [핵심]**
+         - 사용자의 문제 해결과 무관한 분야의 전문가/기업을 추천함: **실격(0점 처리)**
+         - 추천 대상의 전문성이 요건에 미달함: 건당 -10점
+
+      2. **추천 근거의 타당성 (Justification) - 30점**
+         - 왜 이 사람/기업을 추천했는지에 대한 논리적 연결 고리가 약함: -5점
+         - 단순히 "좋다", "유명하다" 식의 주관적 서술: -5점
+
+      3. **데이터 활용도 (Data Usage) - 20점**
+         - [기업 프로필], 지식베이스, 웹검색 결과에 없는 허구의 인물을 추천(할루시네이션): -20점
+         - 제공된 데이터 내에서 최적의 후보를 찾지 못함: -5점
+
+      4. **정보 완결성 (Completeness) - 10점**
+         - 연락처, 소속, 주요 이력 등 필수 메타데이터 누락: 건당 -2점
+      `;
+      break;
+
+    case 'venture_combination':
+      systemPromptRole = "기업 오픈 이노베이션/협업 코디네이터";
+      criteriaDescription = `
+      1. **협업 구조의 명확성 (Collaboration Structure) - 40점**
+         - 협력 모델(공동연구, 용역, 지분투자, 공급계약 등)이 모호함: -10점
+         - 각 주체의 역할과 책임(R&R)이 불분명함: -5점
+
+      2. **논리적 시너지 (Logic & Synergy) - 30점**
+         - 두 기업/주체가 만났을 때의 기대 효과가 논리적으로 설명되지 않음: -10점
+         - '왜' 협력해야 하는지에 대한 설득력이 부족함: -5점
+
+      3. **비즈니스 타당성 (Business Viability) - 20점**
+         - 시장성이나 수익 모델 관점에서 비현실적인 제안: -5점
+
+      4. **이해 용이성 (Clarity) - 10점**
+         - 양측이 보고 즉시 이해할 수 있도록 쉽게 서술되지 않음: -2점
+      `;
+      break;
+
+    case 'work_support':
+      systemPromptRole = "경영기획실장 / 운영 관리자 (Chief of Staff)";
+      criteriaDescription = `
+      1. **조직 컨텍스트 반영 (Organizational Context) - 40점**
+         - 회사의 미션, 비전, KPI(Org AI Twin)와 상충되는 조언: -10점
+         - 사용자의 직책/권한 범위를 벗어난 비현실적 지시: -5점
+
+      2. **사내 지식 활용 (Internal Knowledge) - 30점**
+         - [공통 환경]으로 제공된 사내 규정이나 프로세스를 위반함: -10점
+         - 불확실한 외부 정보를 사실인 양 서술함: -5점
+
+      3. **업무 효율성 (Task Efficiency) - 20점**
+         - 바로 업무에 써먹을 수 없는 원론적인 답변: -5점
+
+      4. **톤앤매너 (Tone) - 10점**
+         - 사내 업무용으로 부적절한 말투(지나치게 가볍거나 공격적): -2점
+      `;
+      break;
+
+    case 'project_space':
+      systemPromptRole = "TPM (Technical Project Manager)";
+      criteriaDescription = `
+      1. **프로젝트 현황 이해 (Project Context) - 40점**
+         - 현재 프로젝트의 단계, 일정, 이슈 상황을 잘못 파악하고 엉뚱한 조언: -10점
+         - 첨부된 파일 내용을 제대로 파악하지 못함: -5점
+
+      2. **실행 가능성 (Actionability) - 30점**
+         - 구체적인 '다음 단계(Next Step)'나 '액션 아이템'이 없음: -10점
+         - 담당자 지정이나 기한 설정 제안이 누락됨: -5점
+
+      3. **리스크 관리 (Risk Management) - 20점**
+         - 잠재적인 지연 요소나 문제점을 짚어내지 못함: -5점
+
+      4. **커뮤니케이션 (Communication) - 10점**
+         - 팀원들에게 공유하기에 요약이 난해함: -2점
+      `;
+      break;
+
+    default:
+      systemPromptRole = "경영 전략 컨설턴트";
+      criteriaDescription = "기본 컨설팅 평가 기준 적용";
+  }
+
+  const prompt = `### Role: ${systemPromptRole}
+### Task: 아래 두 가지 답변(A/B)을 비교 평가하여 더 우수한 답변을 선정하십시오.
+
+## 1. 평가 컨텍스트 (Input Data)
+* **클라이언트/기업 프로필 (Common Env)**:
+${commonEnv}
+
+* **사용자 질문 (User Query)**:
+${userQuery}
+
+## 2. 감점 기준 및 평가지표 (총점 100점 시작)
+각 답변은 100점에서 시작하며, 아래 결함이 발견될 때마다 점수를 차감(Deduction)하십시오.
+${criteriaDescription}
+
+**중요 평가 원칙 (Critical Instruction):**
+- 질문에서 **'출처 표기'를 명시적으로 요구하지 않았다면**, 출처가 없다는 이유로 절대 감점하지 마십시오.
+- 오직 콘텐츠의 질, 논리성, 전문가적 통찰력에 집중하십시오.
+
+## 3. 출력 형식 (반드시 JSON 포맷만 출력)
+{
+  "winner": "A" 또는 "B" 또는 "Tie",
+  "winFactor": "승리 요인을 한 줄로 요약",
+  "scores": {
+    "accuracy": { "A": 0, "B": 0 },
+    "adherence": { "A": 0, "B": 0 },
+    "logic": { "A": 0, "B": 0 },
+    "readability": { "A": 0, "B": 0 },
+    "total": { "A": 0, "B": 0 }
+  },
+  "analysis": {
+    "A": { "strengths": ["..."], "weaknesses": ["..."] },
+    "B": { "strengths": ["..."], "weaknesses": ["..."] }
+  },
+  "suggestion": "향후 개선을 위한 한 줄 제언"
+}
+
+---
+## Response A:
+${responseA}
+
+## Response B:
+${responseB}
+`;
+
+  let responseText = '';
+  let judgeModelName = '';
+
+  try {
+    if (judgeProvider === 'claude') {
+      judgeModelName = 'Claude 4.5 Sonnet';
+      const msg = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      responseText = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    } else {
+      judgeModelName = 'GPT-5';
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'gpt-5-2025-08-07',
+        response_format: { type: 'json_object' }
+      });
+      responseText = completion.choices[0].message.content || '';
+    }
+
+    const jsonStr = responseText.substring(
+      responseText.indexOf('{'),
+      responseText.lastIndexOf('}') + 1
+    );
+    const parsed = JSON.parse(jsonStr);
+
+    return {
+      ...parsed,
+      judgeModel: judgeModelName
+    };
+  } catch (error) {
+    console.error(`Service specific evaluation error(${judgeProvider}): `, error);
     return null;
   }
 }
