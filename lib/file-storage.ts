@@ -26,7 +26,7 @@ export function saveTestResult(input: SaveTestResultInput): string {
     const timeStr = now.toTimeString().slice(0, 5).replace(/:/g, '');
     const timestamp = `${dateStr}_${timeStr}`;
 
-    const safeTitle = input.testTitle.replace(/[\\/:*?"<>|]/g, '_');
+    const safeTitle = input.testTitle.replace(/[\\/:*?"<>|]/g, '_').slice(0, 15);
     const typeFolder = input.testType || 'model_eval';
     const folderName = `${timestamp}_${safeTitle}`;
     const folderPath = path.join(process.cwd(), 'results', typeFolder, folderName);
@@ -173,10 +173,7 @@ ${gptComp.map(c => `## 대상 모델: ${c.targetModel}
 ### 상세 점수 비교:
 | 항목 | 버전 A | 버전 B |
 | :--- | :---: | :---: |
-| 정확성 (20) | ${c.scores.accuracy.A} | ${c.scores.accuracy.B} |
-| 지시 이행 (45) | ${c.scores.adherence.A} | ${c.scores.adherence.B} |
-| 논리성 (20) | ${c.scores.logic.A} | ${c.scores.logic.B} |
-| 가독성 (15) | ${c.scores.readability.A} | ${c.scores.readability.B} |
+${c.scores.details.map(d => `| ${d.label} (${d.max}) | ${d.score.A} | ${d.score.B} |`).join('\n')}
 | **총합 (100)** | **${c.scores.total.A}** | **${c.scores.total.B}** |
 
 ### 버전별 장단점 분석:
@@ -206,10 +203,7 @@ ${claudeComp.map(c => `## 대상 모델: ${c.targetModel}
 ### 상세 점수 비교:
 | 항목 | 버전 A | 버전 B |
 | :--- | :---: | :---: |
-| 정확성 (20) | ${c.scores.accuracy.A} | ${c.scores.accuracy.B} |
-| 지시 이행 (45) | ${c.scores.adherence.A} | ${c.scores.adherence.B} |
-| 논리성 (20) | ${c.scores.logic.A} | ${c.scores.logic.B} |
-| 가독성 (15) | ${c.scores.readability.A} | ${c.scores.readability.B} |
+${c.scores.details.map(d => `| ${d.label} (${d.max}) | ${d.score.A} | ${d.score.B} |`).join('\n')}
 | **총합 (100)** | **${c.scores.total.A}** | **${c.scores.total.B}** |
 
 ### 버전별 장단점 분석:

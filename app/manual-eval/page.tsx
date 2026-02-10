@@ -13,7 +13,7 @@ export default function ManualEvalPage() {
     const [testTitle, setTestTitle] = useState('');
     const [testQuestionId, setTestQuestionId] = useState('');
     const [serviceType, setServiceType] = useState<string>('consulting_tech');
-    const [commonTestEnv, setCommonTestEnv] = useState('A는 회사 프로필 및 비즈니스 특성에 대한 RAG 데이터 입력');
+    const [commonTestEnv, setCommonTestEnv] = useState('테스트 대상 회사의 특성 및 지식/데이터를 반영한 응답 생성');
     const [question, setQuestion] = useState('');
     const [responseA, setResponseA] = useState({ env: '', content: '' });
     const [responseB, setResponseB] = useState({ env: '', content: '' });
@@ -137,12 +137,12 @@ export default function ManualEvalPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-700">공통 데이터 환경 (Common Env)</label>
+                        <label className="text-sm font-bold text-slate-700">테스트 평가 방향 (Test Direction)</label>
                         <textarea
                             value={commonTestEnv}
                             onChange={e => setCommonTestEnv(e.target.value)}
                             className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-medium h-32 resize-none"
-                            placeholder="두 응답에 공통적으로 적용되는 페르소나나 제약조건을 입력하세요."
+                            placeholder="테스트의 주요 평가 방향성을 입력하세요. (예: 테스트 대상 회사의 특성 및 지식/데이터를 반영한 응답 생성)"
                         />
                     </div>
 

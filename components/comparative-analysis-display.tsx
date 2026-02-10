@@ -1,23 +1,6 @@
 'use client';
 
-interface ComparativeResult {
-    winner: 'A' | 'B' | 'Tie';
-    winFactor: string;
-    scores: {
-        accuracy: { A: number; B: number };    // 20
-        adherence: { A: number; B: number };   // 45
-        logic: { A: number; B: number };       // 20
-        readability: { A: number; B: number }; // 15
-        total: { A: number; B: number };       // 100
-    };
-    analysis: {
-        A: { strengths: string[]; weaknesses: string[] };
-        B: { strengths: string[]; weaknesses: string[] };
-    };
-    suggestion: string;
-    targetModel: string;
-    judgeModel: string;
-}
+import { ComparativeResult } from '@/lib/llm-client';
 
 interface ComparativeAnalysisDisplayProps {
     results: ComparativeResult[];
@@ -140,10 +123,16 @@ export default function ComparativeAnalysisDisplay({ results }: ComparativeAnaly
                                     <div className="text-3xl font-black text-gray-900">{result.scores.total.A}<span className="text-sm text-gray-300 font-bold ml-1">/100</span></div>
                                 </div>
                                 <div className="space-y-4">
-                                    <ComparisonMetric label="지시 이행 (Primary)" score={result.scores.adherence.A} max={45} color="blue" isPrimary />
-                                    <ComparisonMetric label="정확성" score={result.scores.accuracy.A} max={20} color="blue" />
-                                    <ComparisonMetric label="논리성/구조" score={result.scores.logic.A} max={20} color="blue" />
-                                    <ComparisonMetric label="가독성/완성도" score={result.scores.readability.A} max={15} color="blue" />
+                                    {result.scores.details.map((metric, idx) => (
+                                        <ComparisonMetric
+                                            key={metric.key}
+                                            label={metric.label}
+                                            score={metric.score.A}
+                                            max={metric.max}
+                                            color="blue"
+                                            isPrimary={idx === 0}
+                                        />
+                                    ))}
                                 </div>
 
                                 <div className="mt-10 space-y-5">
@@ -180,10 +169,16 @@ export default function ComparativeAnalysisDisplay({ results }: ComparativeAnaly
                                     <div className="text-3xl font-black text-gray-900">{result.scores.total.B}<span className="text-sm text-gray-300 font-bold ml-1">/100</span></div>
                                 </div>
                                 <div className="space-y-4">
-                                    <ComparisonMetric label="지시 이행 (Primary)" score={result.scores.adherence.B} max={45} color="purple" isPrimary />
-                                    <ComparisonMetric label="정확성" score={result.scores.accuracy.B} max={20} color="purple" />
-                                    <ComparisonMetric label="논리성/구조" score={result.scores.logic.B} max={20} color="purple" />
-                                    <ComparisonMetric label="가독성/완성도" score={result.scores.readability.B} max={15} color="purple" />
+                                    {result.scores.details.map((metric, idx) => (
+                                        <ComparisonMetric
+                                            key={metric.key}
+                                            label={metric.label}
+                                            score={metric.score.B}
+                                            max={metric.max}
+                                            color="purple"
+                                            isPrimary={idx === 0}
+                                        />
+                                    ))}
                                 </div>
 
                                 <div className="mt-10 space-y-5">
