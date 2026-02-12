@@ -1,0 +1,88 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { runTest, evaluateConsistency, evaluatePerformance, ModelProvider, ModelResult, AnalysisResult, PerformanceResult } from '@/lib/llm-client';
+import { saveTestResult } from '@/lib/file-storage';
+
+export async function POST(request: NextRequest) {
+    try {
+        const body = await request.json();
+        const { testTitle, systemPromptVersion, systemPrompt, userMessage, models, repeatCount } = body;
+
+        if (!testTitle) {
+            return NextResponse.json({ error: 'Test title is required' }, { status: 400 });
+        }
+
+        if (!userMessage) {
+            return NextResponse.json({ error: 'User message is required' }, { status: 400 });
+        }
+
+        if (!models || models.length === 0) {
+            return NextResponse.json({ error: 'At least one model must be selected' }, { status: 400 });
+        }
+
+        const finalRepeatCount = Math.max(1, parseInt(repeatCount) || 1);
+
+        // 1. LLM 테스트 실행
+        const results = await runTest({
+            testTitle,
+            systemPromptVersion,
+            systemPrompt,
+            userMessage,
+            models: models as ModelProvider[],
+            repeatCount: finalRepeatCount,
+        });
+
+        // 2. 일관성 및 성능 분석
+        const analysisResults: AnalysisResult[] = [];
+        const performanceResults: PerformanceResult[] = [];
+
+        if (finalRepeatCount > 1) {
+            // 모델별로 그룹화
+            const groupedResults = results.reduce((acc, curr) => {
+                if (!acc[curr.model]) acc[curr.model] = [];
+                acc[curr.model].push(curr);
+                return acc;
+            }, {} as Record<string, ModelResult[]>);
+
+            for (const [modelName, modelRuns] of Object.entries(groupedResults)) {
+                // 일관성 분석 (2회 이상인 경우)
+                if (modelRuns.length >= 2) {
+                    const reference = modelRuns.find(r => r.repeatIndex === 1)?.response || '';
+                    const compares = modelRuns.filter(r => r.repeatIndex > 1).map(r => r.response);
+
+                    const gptAnalysis = await evaluateConsistency(modelName, reference, compares, 'gpt');
+                    analysisResults.push(gptAnalysis);
+
+                    const claudeAnalysis = await evaluateConsistency(modelName, reference, compares, 'claude');
+                    analysisResults.push(claudeAnalysis);
+                }
+
+                // 성능 분석 (모든 회차 종합 채점)
+                const allResponses = modelRuns.map(r => r.response);
+
+                const gptPerformance = await evaluatePerformance(modelName, allResponses, 'gpt');
+                if (gptPerformance) performanceResults.push(gptPerformance);
+
+                const claudePerformance = await evaluatePerformance(modelName, allResponses, 'claude');
+                if (claudePerformance) performanceResults.push(claudePerformance);
+            }
+        }
+
+        // 3. 결과 파일 저장
+        const folderPath = saveTestResult({
+            testTitle,
+            systemPromptVersion,
+            systemPrompt,
+            userMessage,
+            models,
+            results,
+            analysisResults,
+            performanceResults,
+            repeatCount: finalRepeatCount,
+        });
+
+        return NextResponse.json({ results, analysisResults, performanceResults, savedPath: folderPath });
+    } catch (error) {
+        console.error('Test execution error:', error);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+}
